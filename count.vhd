@@ -8,25 +8,35 @@ ENTITY digital_clock IS
 		clk_100MHz : IN STD_LOGIC;
 		reset : IN STD_LOGIC;
 		format : IN STD_LOGIC; -- 1: XXmmhhss, 0: hhmmhhmm
-		anode : OUT std_logic_vector (7 DOWNTO 0);
-		segments : OUT std_logic_vector (6 DOWNTO 0)
+		anode : OUT STD_LOGIC_VECTOR (7 DOWNTO 0);
+		segments : OUT STD_LOGIC_VECTOR (6 DOWNTO 0);
+		alarmled : OUT STD_LOGIC
 	);
 END digital_clock;
 
 ARCHITECTURE Behavioral OF digital_clock IS
-	SIGNAL clk_1sec : std_logic := '0';
-	SIGNAL clk_freq : INTEGER := 50000000; -- 100 MHz
+	-- clock divider
+	SIGNAL clk_1sec : STD_LOGIC := '0';
+	SIGNAL clk_freq : INTEGER := 500000; -- 100 MHz
 	SIGNAL count : INTEGER := 1;
- 
-	SIGNAL div : std_logic_vector (22 DOWNTO 0);
-	SIGNAL which_display : std_logic_vector (2 DOWNTO 0);
- 
+
+	-- 7-seg display 8:1 mux
+	SIGNAL div : STD_LOGIC_VECTOR (22 DOWNTO 0);
+	SIGNAL which_display : STD_LOGIC_VECTOR (2 DOWNTO 0);
+
+	-- current time
 	SIGNAL sec_small_digit : STD_LOGIC_VECTOR (6 DOWNTO 0);
 	SIGNAL sec_large_digit : STD_LOGIC_VECTOR (6 DOWNTO 0);
 	SIGNAL min_small_digit : STD_LOGIC_VECTOR (6 DOWNTO 0);
 	SIGNAL min_large_digit : STD_LOGIC_VECTOR (6 DOWNTO 0);
 	SIGNAL hr_small_digit : STD_LOGIC_VECTOR (6 DOWNTO 0);
 	SIGNAL hr_large_digit : STD_LOGIC_VECTOR (6 DOWNTO 0);
+ 
+	-- alarm time
+	SIGNAL alarm_hr_large_digit : STD_LOGIC_VECTOR (6 DOWNTO 0);
+	SIGNAL alarm_hr_small_digit : STD_LOGIC_VECTOR (6 DOWNTO 0);
+	SIGNAL alarm_min_large_digit : STD_LOGIC_VECTOR (6 DOWNTO 0);
+	SIGNAL alarm_min_small_digit : STD_LOGIC_VECTOR (6 DOWNTO 0);
 
 	-- Clock divider from 100 MHz to 1 Hz
 BEGIN
@@ -42,14 +52,20 @@ BEGIN
 	END PROCESS;
 
 	-- Main digital clock counting logic
+	-- current time
 	PROCESS (clk_1sec, reset)
-	VARIABLE sec_small_cnt : INTEGER RANGE 0 TO 10;
-	VARIABLE sec_large_cnt : INTEGER RANGE 0 TO 6;
-	VARIABLE min_small_cnt : INTEGER RANGE 0 TO 10;
-	VARIABLE min_large_cnt : INTEGER RANGE 0 TO 6;
-	VARIABLE hr_small_cnt : INTEGER RANGE 0 TO 10;
-	VARIABLE hr_large_cnt : INTEGER RANGE 0 TO 2;
+	VARIABLE sec_small_cnt : INTEGER RANGE 0 TO 10 := 0;
+	VARIABLE sec_large_cnt : INTEGER RANGE 0 TO 6 := 0;
+	VARIABLE min_small_cnt : INTEGER RANGE 0 TO 10 := 0;
+	VARIABLE min_large_cnt : INTEGER RANGE 0 TO 6 := 0;
+	VARIABLE hr_small_cnt : INTEGER RANGE 0 TO 10 := 0;
+	VARIABLE hr_large_cnt : INTEGER RANGE 0 TO 2 := 0;
  
+	-- alarm time
+	VARIABLE alarm_hr_large : INTEGER RANGE 0 TO 2 := 0;
+	VARIABLE alarm_hr_small : INTEGER RANGE 0 TO 9 := 1;
+	VARIABLE alarm_min_large : INTEGER RANGE 0 TO 5 := 3;
+	VARIABLE alarm_min_small : INTEGER RANGE 0 TO 9 := 0;
 		BEGIN
 			IF (reset = '1') THEN
 				sec_small_cnt := 0;
@@ -58,6 +74,7 @@ BEGIN
 				min_large_cnt := 0;
 				hr_small_cnt := 0;
 				hr_large_cnt := 0;
+				alarmled <= '0';
 
 			ELSIF rising_edge(clk_1sec) THEN
 				sec_small_cnt := sec_small_cnt + 1;
@@ -89,9 +106,14 @@ BEGIN
 					hr_small_cnt := 0;
 					hr_large_cnt := 0;
 				END IF;
+				-- alarm
+				IF (hr_large_cnt = alarm_hr_large AND hr_small_cnt = alarm_hr_small AND min_large_cnt = alarm_min_large AND min_small_cnt = alarm_min_small) THEN
+					alarmled <= '1';
+				END IF;
 			END IF;
 
 			-- Translate each digit on the clock to 7-seg cathode values
+			-- current time
 			CASE sec_small_cnt IS
 				WHEN 0 => sec_small_digit <= "0000001";
 				WHEN 1 => sec_small_digit <= "1001111";
@@ -105,7 +127,7 @@ BEGIN
 				WHEN 9 => sec_small_digit <= "0000100";
 				WHEN OTHERS => NULL;
 			END CASE;
- 
+
 			CASE sec_large_cnt IS
 				WHEN 0 => sec_large_digit <= "0000001";
 				WHEN 1 => sec_large_digit <= "1001111";
@@ -159,8 +181,52 @@ BEGIN
 				WHEN 1 => hr_large_digit <= "1001111";
 				WHEN 2 => hr_large_digit <= "0010010";
 			END CASE;
-		END PROCESS;
  
+			-- alarm time
+			CASE alarm_min_small IS
+				WHEN 0 => alarm_min_small_digit <= "0000001";
+				WHEN 1 => alarm_min_small_digit <= "1001111";
+				WHEN 2 => alarm_min_small_digit <= "0010010";
+				WHEN 3 => alarm_min_small_digit <= "0000110";
+				WHEN 4 => alarm_min_small_digit <= "1001100";
+				WHEN 5 => alarm_min_small_digit <= "0100100";
+				WHEN 6 => alarm_min_small_digit <= "0100000";
+				WHEN 7 => alarm_min_small_digit <= "0001111";
+				WHEN 8 => alarm_min_small_digit <= "0000000";
+				WHEN 9 => alarm_min_small_digit <= "0000100";
+				WHEN OTHERS => NULL;
+			END CASE;
+
+			CASE alarm_min_large IS
+				WHEN 0 => alarm_min_large_digit <= "0000001";
+				WHEN 1 => alarm_min_large_digit <= "1001111";
+				WHEN 2 => alarm_min_large_digit <= "0010010";
+				WHEN 3 => alarm_min_large_digit <= "0000110";
+				WHEN 4 => alarm_min_large_digit <= "1001100";
+				WHEN 5 => alarm_min_large_digit <= "0100100";
+			END CASE;
+
+			CASE alarm_hr_small IS
+				WHEN 0 => alarm_hr_small_digit <= "0000001";
+				WHEN 1 => alarm_hr_small_digit <= "1001111";
+				WHEN 2 => alarm_hr_small_digit <= "0010010";
+				WHEN 3 => alarm_hr_small_digit <= "0000110";
+				WHEN 4 => alarm_hr_small_digit <= "1001100";
+				WHEN 5 => alarm_hr_small_digit <= "0100100";
+				WHEN 6 => alarm_hr_small_digit <= "0100000";
+				WHEN 7 => alarm_hr_small_digit <= "0001111";
+				WHEN 8 => alarm_hr_small_digit <= "0000000";
+				WHEN 9 => alarm_hr_small_digit <= "0000100";
+				WHEN OTHERS => NULL;
+			END CASE;
+
+			CASE alarm_hr_large IS
+				WHEN 0 => alarm_hr_large_digit <= "0000001";
+				WHEN 1 => alarm_hr_large_digit <= "1001111";
+				WHEN 2 => alarm_hr_large_digit <= "0010010";
+			END CASE;
+		END PROCESS;
+
 		-- Drive which anode is being updated with what digit
 		div <= div + 1 WHEN rising_edge(clk_100MHz);
 		which_display <= div(16 DOWNTO 14);
@@ -194,18 +260,18 @@ BEGIN
 							segments <= sec_small_digit;
 							anode <= "11111110";
 						END IF;
-					ELSE -- TODO Left 4 displays should display a separate alarm time instead of duping the current time
+					ELSE
 						IF which_display = "111" THEN
-							segments <= hr_large_digit;
+							segments <= alarm_hr_large_digit;
 							anode <= "01111111";
 						ELSIF which_display = "110" THEN
-							segments <= hr_small_digit;
+							segments <= alarm_hr_small_digit;
 							anode <= "10111111";
 						ELSIF which_display = "101" THEN
-							segments <= min_large_digit;
+							segments <= alarm_min_large_digit;
 							anode <= "11011111";
 						ELSIF which_display = "100" THEN
-							segments <= min_small_digit;
+							segments <= alarm_min_small_digit;
 							anode <= "11101111";
 						ELSIF which_display = "011" THEN
 							segments <= hr_large_digit;
