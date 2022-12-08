@@ -6,19 +6,17 @@ ENTITY digital_clock IS
 	PORT (
 		clk_100MHz : IN STD_LOGIC;
 
-		-- Inputs to change display
-		reset : IN STD_LOGIC := '1';
+		-- Switches
+		reset : IN STD_LOGIC; -- left
+		btn_next : IN STD_LOGIC; -- right
+		inc : IN STD_LOGIC; -- up
+		dec : IN STD_LOGIC; -- down
+
+		-- Time display
 		format : IN STD_LOGIC; -- 1: XXmm hhss, 0: hhmm hhmm
-
-		-- Increment time switches
-		btn_up : IN STD_LOGIC := '1';
-		btn_next : IN STD_LOGIC := '1';
-		btn_down : IN STD_LOGIC := '1';
-
-		-- Time display outputs
 		anode : OUT STD_LOGIC_VECTOR (7 DOWNTO 0);
 		segments : OUT STD_LOGIC_VECTOR (6 DOWNTO 0);
-		alarmled : OUT STD_LOGIC
+		alarmled, led1, led2, led3, led4 : OUT STD_LOGIC
 	);
 END digital_clock;
 
@@ -69,19 +67,19 @@ ARCHITECTURE Behavioral OF digital_clock IS
 
 	-- 7-seg display 8:1 mux (+ keypad)
 	SIGNAL cnt : STD_LOGIC_VECTOR (20 DOWNTO 0) := (OTHERS => '0');
-	SIGNAL kp_clk : STD_LOGIC;
 	SIGNAL led_mpx : STD_LOGIC_VECTOR (2 DOWNTO 0);
 
 	-- State machine
 	SIGNAL sm_clk : STD_LOGIC;
-
-	TYPE state IS (ALARM_HR_L_STATE, ALARM_HR_S_STATE, ALARM_MIN_L_STATE, ALARM_MIN_S_STATE,
-		HR_L_STATE, HR_S_STATE, MIN_L_STATE, MIN_S_STATE, RUN_ALARM_CLOCK);
-
+	TYPE state IS (ALARM_HR_L_SET, ALARM_HR_L_REL, ALARM_HR_S_SET, ALARM_HR_S_REL,
+		ALARM_MIN_L_SET, ALARM_MIN_L_REL, ALARM_MIN_S_SET, ALARM_MIN_S_REL,
+		HR_L_SET, HR_L_REL, HR_S_SET, HR_S_REL, MIN_L_SET, MIN_L_REL, MIN_S_SET, MIN_S_REL,
+		SET_ALARM_CLOCK, RUN_ALARM_CLOCK);
 	SIGNAL curr_state, nx_state : state;
+	SIGNAL tmpcnt : INTEGER := 0;
 
 BEGIN
-	-- Set up 100MHz clock for state machine, LED mux, keypad
+	-- Set up 100MHz clock for state machine, LED mux
 	ck_proc : PROCESS (clk_100MHz)
 	BEGIN
 		IF rising_edge(clk_100MHz) THEN
@@ -89,7 +87,6 @@ BEGIN
 		END IF;
 	END PROCESS;
 
-	kp_clk <= cnt(20);
 	sm_clk <= cnt(15);
 	led_mpx <= cnt(19 DOWNTO 17);
 
@@ -97,84 +94,218 @@ BEGIN
 	create_clk_1sec : clock_divider PORT MAP(clk_in => clk_100MHz, clk_out => clk_1sec);
 
 	-- Set up state machine clock process and transition logic
-	sm_ck_pr : PROCESS (reset, sm_clk)
+	sm_ck_pr : PROCESS (sm_clk, reset)
 	BEGIN
-		IF reset = '0' THEN
-			curr_state <= RUN_ALARM_CLOCK;
-		ELSIF rising_edge (sm_clk) THEN
+		IF reset = '1' THEN
+			curr_state <= ALARM_HR_L_SET;
+		ELSIF rising_edge(sm_clk) THEN
 			curr_state <= nx_state;
 		END IF;
 	END PROCESS;
 
 	-- State machine combinatorial process; Determines output of state machine and next state
-	sm_comb_pr : PROCESS (curr_state, clk_1sec)
+	sm_comb_pr : PROCESS (curr_state, btn_next)
 	BEGIN
+		nx_state <= curr_state;
 		CASE curr_state IS
-			WHEN ALARM_HR_L_STATE =>
-			WHEN ALARM_HR_S_STATE =>
-			WHEN ALARM_MIN_L_STATE =>
-			WHEN ALARM_MIN_S_STATE =>
-			WHEN HR_L_STATE =>
-			WHEN HR_S_STATE =>
-			WHEN MIN_L_STATE =>
-			WHEN MIN_S_STATE =>
-			WHEN RUN_ALARM_CLOCK =>
-                IF (reset = '0') THEN
-                sec_small_cnt <= 0;
-                sec_large_cnt <= 0;
-                min_small_cnt <= 0;
-                min_large_cnt <= 0;
-                hr_small_cnt <= 0;
-                hr_large_cnt <= 0;
-    
-                -- alarm_min_small <= 0;
-                -- alarm_min_large <= 0;
-                -- alarm_hr_small <= 0;
-                -- alarm_hr_large <= 0;
-                alarmled <= '0';
-    
-                -- Current time
-				ELSIF rising_edge(clk_1sec) THEN
-					sec_small_cnt <= sec_small_cnt + 1;
-					IF (sec_small_cnt >= 9) THEN
-						sec_small_cnt <= 0;
-						sec_large_cnt <= sec_large_cnt + 1;
-						IF (sec_large_cnt >= 5) THEN
-							sec_large_cnt <= 0;
-							min_small_cnt <= min_small_cnt + 1;
-							IF (min_small_cnt >= 9) THEN
-								min_small_cnt <= 0;
-								min_large_cnt <= min_large_cnt + 1;
-								IF (min_large_cnt >= 5) THEN
-									min_large_cnt <= 0;
-									hr_small_cnt <= hr_small_cnt + 1;
-									IF (hr_small_cnt >= 9) THEN
-										hr_small_cnt <= 0;
-										hr_large_cnt <= hr_large_cnt + 1;
-									END IF;
-								END IF;
-							END IF;
-						END IF;
-					END IF;
-					IF (hr_large_cnt = 2 AND hr_small_cnt >= 4) THEN
-						sec_small_cnt <= 0;
-						sec_large_cnt <= 0;
-						min_small_cnt <= 0;
-						min_large_cnt <= 0;
-						hr_small_cnt <= 0;
-						hr_large_cnt <= 0;
-					END IF;
-
-					-- Alarm
-					IF (hr_large_cnt = alarm_hr_large AND hr_small_cnt = alarm_hr_small AND min_large_cnt = alarm_min_large AND min_small_cnt = alarm_min_small) THEN
-						alarmled <= '1'; -- FIXME Alarm goes off a second late?
-					END IF;
+			WHEN ALARM_HR_L_SET =>
+				led1 <= '0';
+				led2 <= '0';
+				led3 <= '0';
+				led4 <= '0';
+				IF btn_next = '1' THEN
+					nx_state <= ALARM_HR_L_REL;
+				ELSE
+					nx_state <= ALARM_HR_L_SET;
 				END IF;
-				
+			WHEN ALARM_HR_L_REL =>
+				IF btn_next = '0' THEN
+					nx_state <= ALARM_HR_S_SET;
+				ELSE
+					nx_state <= ALARM_HR_L_REL;
+				END IF;
+			WHEN ALARM_HR_S_SET =>
+				led1 <= '0';
+				led2 <= '0';
+				led3 <= '0';
+				led4 <= '1';
+				IF btn_next = '1' THEN
+					nx_state <= ALARM_HR_S_REL;
+				ELSE
+					nx_state <= ALARM_HR_S_SET;
+				END IF;
+			WHEN ALARM_HR_S_REL =>
+				IF btn_next = '0' THEN
+					nx_state <= ALARM_MIN_L_SET;
+				ELSE
+					nx_state <= ALARM_HR_S_REL;
+				END IF;
+			WHEN ALARM_MIN_L_SET =>
+				led1 <= '0';
+				led2 <= '0';
+				led3 <= '1';
+				led4 <= '0';
+				IF btn_next = '1' THEN
+					nx_state <= ALARM_MIN_L_REL;
+				ELSE
+					nx_state <= ALARM_MIN_L_SET;
+				END IF;
+			WHEN ALARM_MIN_L_REL =>
+				IF btn_next = '0' THEN
+					nx_state <= ALARM_MIN_S_SET;
+				ELSE
+					nx_state <= ALARM_MIN_L_REL;
+				END IF;
+			WHEN ALARM_MIN_S_SET =>
+				led1 <= '0';
+				led2 <= '0';
+				led3 <= '1';
+				led4 <= '1';
+				IF btn_next = '1' THEN
+					nx_state <= ALARM_MIN_S_REL;
+				ELSE
+					nx_state <= ALARM_MIN_S_SET;
+				END IF;
+			WHEN ALARM_MIN_S_REL =>
+				IF btn_next = '0' THEN
+					nx_state <= HR_L_SET;
+				ELSE
+					nx_state <= ALARM_MIN_S_REL;
+				END IF;
+			WHEN HR_L_SET =>
+				led1 <= '0';
+				led2 <= '1';
+				led3 <= '0';
+				led4 <= '0';
+				IF btn_next = '1' THEN
+					nx_state <= HR_L_REL;
+				ELSE
+					nx_state <= HR_L_SET;
+				END IF;
+			WHEN HR_L_REL =>
+				IF btn_next = '0' THEN
+					nx_state <= HR_S_SET;
+				ELSE
+					nx_state <= HR_L_REL;
+				END IF;
+			WHEN HR_S_SET =>
+				led1 <= '0';
+				led2 <= '1';
+				led3 <= '0';
+				led4 <= '1';
+				IF btn_next = '1' THEN
+					nx_state <= HR_S_REL;
+				ELSE
+					nx_state <= HR_S_SET;
+				END IF;
+			WHEN HR_S_REL =>
+				IF btn_next = '0' THEN
+					nx_state <= MIN_L_SET;
+				ELSE
+					nx_state <= HR_S_REL;
+				END IF;
+			WHEN MIN_L_SET =>
+				led1 <= '0';
+				led2 <= '1';
+				led3 <= '1';
+				led4 <= '0';
+				IF btn_next = '1' THEN
+					nx_state <= MIN_L_REL;
+				ELSE
+					nx_state <= MIN_L_SET;
+				END IF;
+			WHEN MIN_L_REL =>
+				IF btn_next = '0' THEN
+					nx_state <= MIN_S_SET;
+				ELSE
+					nx_state <= MIN_L_REL;
+				END IF;
+			WHEN MIN_S_SET =>
+				led1 <= '0';
+				led2 <= '1';
+				led3 <= '1';
+				led4 <= '1';
+				IF btn_next = '1' THEN
+					nx_state <= MIN_S_REL;
+				ELSE
+					nx_state <= MIN_S_SET;
+				END IF;
+			WHEN MIN_S_REL =>
+				IF btn_next = '0' THEN
+					nx_state <= SET_ALARM_CLOCK;
+				ELSE
+					nx_state <= MIN_S_REL;
+				END IF;
+			WHEN SET_ALARM_CLOCK =>
+				led1 <= '1';
+				led2 <= '0';
+				led3 <= '0';
+				led4 <= '0';
+				nx_state <= RUN_ALARM_CLOCK;
+			WHEN RUN_ALARM_CLOCK =>
+				led1 <= '1';
+				led2 <= '0';
+				led3 <= '0';
+				led4 <= '1';
 				nx_state <= RUN_ALARM_CLOCK;
 		END CASE;
 	END PROCESS;
 
+	clk_logic : PROCESS (curr_state, reset, clk_1sec)
+	BEGIN
+		IF (curr_state = RUN_ALARM_CLOCK) THEN
+			IF reset = '1' THEN
+				sec_small_cnt <= 0;
+				sec_large_cnt <= 0;
+				min_small_cnt <= 0;
+				min_large_cnt <= 0;
+				hr_small_cnt <= 0;
+				hr_large_cnt <= 0;
+
+				alarm_min_small <= 1;
+				alarm_min_large <= 0;
+				alarm_hr_small <= 0;
+				alarm_hr_large <= 0;
+
+				alarmled <= '0';
+			ELSIF rising_edge(clk_1sec) THEN
+				sec_small_cnt <= sec_small_cnt + 1;
+				IF (sec_small_cnt >= 9) THEN
+					sec_small_cnt <= 0;
+					sec_large_cnt <= sec_large_cnt + 1;
+					IF (sec_large_cnt >= 5) THEN
+						sec_large_cnt <= 0;
+						min_small_cnt <= min_small_cnt + 1;
+						IF (min_small_cnt >= 9) THEN
+							min_small_cnt <= 0;
+							min_large_cnt <= min_large_cnt + 1;
+							IF (min_large_cnt >= 5) THEN
+								min_large_cnt <= 0;
+								hr_small_cnt <= hr_small_cnt + 1;
+								IF (hr_small_cnt >= 9) THEN
+									hr_small_cnt <= 0;
+									hr_large_cnt <= hr_large_cnt + 1;
+								END IF;
+							END IF;
+						END IF;
+					END IF;
+				END IF;
+				IF (hr_large_cnt = 2 AND hr_small_cnt >= 4) THEN
+					sec_small_cnt <= 0;
+					sec_large_cnt <= 0;
+					min_small_cnt <= 0;
+					min_large_cnt <= 0;
+					hr_small_cnt <= 0;
+					hr_large_cnt <= 0;
+				END IF;
+
+				-- Alarm
+				IF (hr_large_cnt = alarm_hr_large AND hr_small_cnt = alarm_hr_small AND min_large_cnt = alarm_min_large AND min_small_cnt = alarm_min_small) THEN
+					alarmled <= '1'; -- FIXME Alarm goes off a second late?
+				END IF;
+			END IF;
+		END IF;
+	END PROCESS;
 	-- Translate each digit on the clock to 7-seg cathode values
 	convert_sec_small : int_to_segdigit PORT MAP(int => sec_small_cnt, segdigit => sec_small_digit);
 	convert_sec_large : int_to_segdigit PORT MAP(int => sec_large_cnt, segdigit => sec_large_digit);
