@@ -104,9 +104,9 @@ BEGIN
 				hr_large_cnt := 0;
 				alarmled <= '0';
 				alarmled_part2 <= '0';
-                alarmled_part3 <= '0';
-                alarmled_part4 <= '0';
-                alarmled_part5 <= '0';
+                		alarmled_part3 <= '0';
+              			alarmled_part4 <= '0';
+                		alarmled_part5 <= '0';
 
 			ELSIF rising_edge(clk_1sec) THEN
 				sec_small_cnt := sec_small_cnt + 1;
