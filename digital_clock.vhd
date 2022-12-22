@@ -249,7 +249,6 @@ BEGIN
 							nx_state <= ALARM_MIN_S_REL;
 						END IF;
 
-                    -- FIXME The strangest bug that is unable to affect the final result because of the IF statements in the SET and KP states
 					WHEN HR_L_SET =>
 						led <= "000010000";
 						IF kp_hit = '1' THEN
@@ -371,7 +370,6 @@ BEGIN
 		hr_large_cnt, hr_small_cnt, min_large_cnt, min_small_cnt)
 	BEGIN
 		IF reset = '1' THEN
-		    -- FIXME The nx versions of these signals never actually reset, can lead to unintended behavior
 			hr_large_cnt <= 0;
 			hr_small_cnt <= 0;
 			min_large_cnt <= 0;
@@ -438,7 +436,7 @@ BEGIN
 			END IF;
 			-- Alarm
 			IF (hr_large_cnt = alarm_hr_large AND hr_small_cnt = alarm_hr_small AND min_large_cnt = alarm_min_large AND min_small_cnt = alarm_min_small) THEN
-				alarmled <= '1'; -- FIXME Alarm goes off on time now but is now also going off during time set stage
+				alarmled <= '1';
 				playalarm <= '1';
 			END IF;
 		END IF;
